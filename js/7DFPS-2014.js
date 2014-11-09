@@ -1,199 +1,105 @@
-// player motion parameters
+var camera, scene, renderer;
+var geometry, material, mesh;
+var controls;
 
-var motion = {
-  airborne : false,
-  position : new THREE.Vector3(),
-  velocity : new THREE.Vector3(),
-  rotation : new THREE.Vector2(),
-  spinning : new THREE.Vector2()
-};
+var objects = [];
 
-motion.position.y = -150;
+var raycaster;
 
+var blocker = document.getElementById( 'blocker' );
+var instructions = document.getElementById( 'instructions' );
 
-// game systems code
+// http://www.html5rocks.com/en/tutorials/pointerlock/intro/
 
-var resetPlayer = function () {
-  if (motion.position.y < -123) {
-    motion.position.set(-2, 7.7, 25);
-    motion.velocity.multiplyScalar(0);
+var havePointerLock = 'pointerLockElement' in document || 'mozPointerLockElement' in document || 'webkitPointerLockElement' in document;
+
+if ( havePointerLock ) {
+
+  var element = document.body;
+
+  var pointerlockchange = function ( event ) {
+
+    if ( document.pointerLockElement === element || document.mozPointerLockElement === element || document.webkitPointerLockElement === element ) {
+
+      controls.enabled = true;
+
+      blocker.style.display = 'none';
+
+    } else {
+
+      controls.enabled = false;
+
+      blocker.style.display = '-webkit-box';
+      blocker.style.display = '-moz-box';
+      blocker.style.display = 'box';
+
+      instructions.style.display = '';
+
+    }
+
   }
-};
 
-var keyboardControls = (function () {
+  var pointerlockerror = function ( event ) {
 
-  var keys = { SP : 32, W : 87, A : 65, S : 83, D : 68, UP : 38, LT : 37, DN : 40, RT : 39 };
+    instructions.style.display = '';
 
-  var keysPressed = {};
+  }
 
-  (function (watchedKeyCodes) {
-    var handler = function (down) {
-      return function (e) {
-        var index = watchedKeyCodes.indexOf(e.keyCode);
-        if (index >= 0) {
-          keysPressed[watchedKeyCodes[index]] = down;
-          e.preventDefault();
+  // Hook pointer lock state change events
+  document.addEventListener( 'pointerlockchange', pointerlockchange, false );
+  document.addEventListener( 'mozpointerlockchange', pointerlockchange, false );
+  document.addEventListener( 'webkitpointerlockchange', pointerlockchange, false );
+
+  document.addEventListener( 'pointerlockerror', pointerlockerror, false );
+  document.addEventListener( 'mozpointerlockerror', pointerlockerror, false );
+  document.addEventListener( 'webkitpointerlockerror', pointerlockerror, false );
+
+  instructions.addEventListener( 'click', function ( event ) {
+
+    instructions.style.display = 'none';
+
+    // Ask the browser to lock the pointer
+    element.requestPointerLock = element.requestPointerLock || element.mozRequestPointerLock || element.webkitRequestPointerLock;
+
+    if ( /Firefox/i.test( navigator.userAgent ) ) {
+
+      var fullscreenchange = function ( event ) {
+
+        if ( document.fullscreenElement === element || document.mozFullscreenElement === element || document.mozFullScreenElement === element ) {
+
+          document.removeEventListener( 'fullscreenchange', fullscreenchange );
+          document.removeEventListener( 'mozfullscreenchange', fullscreenchange );
+
+          element.requestPointerLock();
         }
-      };
-    };
-    window.addEventListener("keydown", handler(true), false);
-    window.addEventListener("keyup", handler(false), false);
-  }([
-    keys.SP, keys.W, keys.A, keys.S, keys.D, keys.UP, keys.LT, keys.DN, keys.RT
-  ]));
 
-  var forward = new THREE.Vector3();
-  var sideways = new THREE.Vector3();
-
-  return function () {
-    if (!motion.airborne) {
-
-      // look around
-      var sx = keysPressed[keys.UP] ? 0.03 : (keysPressed[keys.DN] ? -0.03 : 0);
-      var sy = keysPressed[keys.LT] ? 0.03 : (keysPressed[keys.RT] ? -0.03 : 0);
-
-      if (Math.abs(sx) >= Math.abs(motion.spinning.x)) {
-        motion.spinning.x = sx;
-      }
-      if (Math.abs(sy) >= Math.abs(motion.spinning.y)) {
-        motion.spinning.y = sy;
       }
 
-      // move around
-      forward.set(Math.sin(motion.rotation.y), 0, Math.cos(motion.rotation.y));
-      sideways.set(forward.z, 0, -forward.x);
+      document.addEventListener( 'fullscreenchange', fullscreenchange, false );
+      document.addEventListener( 'mozfullscreenchange', fullscreenchange, false );
 
-      forward.multiplyScalar(keysPressed[keys.W] ? -0.1 : (keysPressed[keys.S] ? 0.1 : 0));
-      sideways.multiplyScalar(keysPressed[keys.A] ? -0.1 : (keysPressed[keys.D] ? 0.1 : 0));
+      element.requestFullscreen = element.requestFullscreen || element.mozRequestFullscreen || element.mozRequestFullScreen || element.webkitRequestFullscreen;
 
-      var combined = forward.add(sideways);
-      if (Math.abs(combined.x) >= Math.abs(motion.velocity.x)) {
-        motion.velocity.x = combined.x;
-      }
-      if (Math.abs(combined.y) >= Math.abs(motion.velocity.y)) {
-        motion.velocity.y = combined.y;
-      }
-      if (Math.abs(combined.z) >= Math.abs(motion.velocity.z)) {
-        motion.velocity.z = combined.z;
-      }
+      element.requestFullscreen();
+
+    } else {
+
+      element.requestPointerLock();
+
     }
-  };
-}());
 
-var applyPhysics = (function () {
-  var timeStep = 5;
-  var timeLeft = timeStep + 1;
+  }, false );
 
-  var birdsEye = 100;
-  var kneeDeep = 0.4;
+} else {
 
-  var raycaster = new THREE.Raycaster();
-  raycaster.ray.direction.set(0, -1, 0);
+  instructions.innerHTML = 'Your browser doesn\'t seem to support Pointer Lock API';
 
-  var angles = new THREE.Vector2();
-  var displacement = new THREE.Vector3();
-
-  return function (dt) {
-    var platform = scene.getObjectByName("platform", true);
-    var time = 0.3, damping = 0.93, gravity = 0.01, tau = 2 * Math.PI;
-    var hits;
-    var actualHeight;
-    if (platform) {
-
-      timeLeft += dt;
-
-      // run several fixed-step iterations to approximate varying-step
-
-      dt = 5;
-      while (timeLeft >= dt) {
-
-        raycaster.ray.origin.copy(motion.position);
-        raycaster.ray.origin.y += birdsEye;
-
-        hits = raycaster.intersectObject(platform);
-
-        motion.airborne = true;
-
-        // are we above, or at most knee deep in, the platform?
-
-        if ((hits.length > 0) && (hits[0].face.normal.y > 0)) {
-          actualHeight = hits[0].distance - birdsEye;
-
-          // collision: stick to the surface if landing on it
-          if ((motion.velocity.y <= 0) && (Math.abs(actualHeight) < kneeDeep)) {
-            motion.position.y -= actualHeight;
-            motion.velocity.y = 0;
-            motion.airborne = false;
-          }
-        }
-
-        if (motion.airborne) {
-          motion.velocity.y -= gravity;
-        }
-
-        angles.copy(motion.spinning).multiplyScalar(time);
-        if (!motion.airborne) {
-          motion.spinning.multiplyScalar(damping);
-        }
-
-        displacement.copy(motion.velocity).multiplyScalar(time);
-        if (!motion.airborne) {
-          motion.velocity.multiplyScalar(damping);
-        }
-
-        motion.rotation.add(angles);
-        motion.position.add(displacement);
-
-        // limit the tilt at ±0.4 radians
-
-        motion.rotation.x = Math.max(-0.4, Math.min(+0.4, motion.rotation.x));
-
-        // wrap horizontal rotation to 0...2π        
-        motion.rotation.y += tau;
-        motion.rotation.y %= tau;
-
-        timeLeft -= dt;
-      }
-    }
-  };
-}());
-
-var updateCamera = (function () {
-  var euler = new THREE.Euler(0, 0, 0, 'YXZ');
-
-  return function () {
-    euler.x = motion.rotation.x;
-    euler.y = motion.rotation.y;
-    camera.quaternion.setFromEuler(euler);
-
-    camera.position.copy(motion.position);
-
-    camera.position.y += 3.0;
-  };
-}());
-
-
-// init 3D stuff
-
-function makeSkybox(urls, size) {
-  var skyboxCubemap = THREE.ImageUtils.loadTextureCube(urls);
-  skyboxCubemap.format = THREE.RGBFormat;
-
-  var skyboxShader = THREE.ShaderLib.cube;
-  skyboxShader.uniforms.tCube.value = skyboxCubemap;
-
-  return new THREE.Mesh(
-    new THREE.BoxGeometry(size, size, size),
-    new THREE.ShaderMaterial({
-      fragmentShader : skyboxShader.fragmentShader,
-      vertexShader : skyboxShader.vertexShader,
-      uniforms : skyboxShader.uniforms,
-      depthWrite : false,
-      side : THREE.BackSide
-    })
-  );
 }
 
+init();
+animate();
+
+// Loading 3D model, from misc FPS example
 function makePlatform(jsonUrl, textureUrl, textureQuality) {
   var placeholder = new THREE.Object3D();
 
@@ -209,79 +115,108 @@ function makePlatform(jsonUrl, textureUrl, textureQuality) {
 
     platform.name = "platform";
 
-    placeholder.add(platform);
+    placeholder.add(platform);  
   });
+
+  // translatex, translateY, translateZ to move model by distance
+  placeholder.translateY(1);
 
   return placeholder;
 }
 
-var renderer = new THREE.WebGLRenderer({ antialias : true });
+function init() {
 
-var camera = new THREE.PerspectiveCamera(60, 1, 0.1, 9000);
+  camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 1, 1000 );
 
-var scene = new THREE.Scene();
+  scene = new THREE.Scene();
+  scene.fog = new THREE.Fog( 0xffffff, 0, 750 );
 
-scene.add(camera);
+  var light = new THREE.HemisphereLight( 0xeeeeff, 0x777788, 0.75 );
+  light.position.set( 0.5, 1, 0.75 );
+  scene.add( light );
 
-scene.add(makeSkybox([
-  'textures/cube/skybox/b7e.jpg', // right
-  'textures/cube/skybox/b7e.jpg', // left
-  'textures/cube/skybox/b7e.jpg', // top
-  'textures/cube/skybox/b7e.jpg', // bottom
-  'textures/cube/skybox/b7e.jpg', // back
-  'textures/cube/skybox/b7e.jpg'  // front
-], 8000));
+  controls = new THREE.PointerLockControls( camera );
+  scene.add( controls.getObject() );
 
-scene.add(makePlatform(
-  'models/platform/platform.json',
-  'models/platform/platform.jpg',
-  renderer.getMaxAnisotropy()
-));
+  raycaster = new THREE.Raycaster( new THREE.Vector3(), new THREE.Vector3( 0, - 1, 0 ), 0, 10 );
 
+  // floor
+  geometry = new THREE.PlaneGeometry( 200, 200, 1, 1 );
+  geometry.applyMatrix( new THREE.Matrix4().makeRotationX( - Math.PI / 2 ) );
 
-// start the game
+  material = new THREE.MeshLambertMaterial({
+        map: THREE.ImageUtils.loadTexture('textures/b7e.jpg')
+  });
 
-var start = function (gameLoop, gameViewportSize) {
-  var resize = function () {
-    var viewport = gameViewportSize();
-    renderer.setSize(viewport.width, viewport.height);
-    camera.aspect = viewport.width / viewport.height;
-    camera.updateProjectionMatrix();
-  };
+  mesh = new THREE.Mesh( geometry, material );
+  scene.add( mesh );
 
-  window.addEventListener('resize', resize, false);
-  resize();
+  // objects
+  geometry = new THREE.BoxGeometry( 20, 20, 20 );
 
-  var lastTimeStamp;
-  var render = function (timeStamp) {
-    var timeElapsed = lastTimeStamp ? timeStamp - lastTimeStamp : 0;
-    lastTimeStamp = timeStamp;
+  for ( var i = 0; i < 500; i ++ ) {
 
-    // call our game loop with the time elapsed since last rendering, in ms
-    gameLoop(timeElapsed);
+    // material = new THREE.MeshPhongMaterial( { specular: 0xffffff, shading: THREE.FlatShading, vertexColors: THREE.VertexColors } );
 
-    renderer.render(scene, camera);
-    requestAnimationFrame(render);
-  };
+    var mesh = new THREE.Mesh( geometry, material );
+    mesh.position.x = Math.floor( Math.random() * 20 - 10 ) * 20;
+    mesh.position.y = Math.floor( Math.random() * 20 ) * 20 + 10;
+    mesh.position.z = Math.floor( Math.random() * 20 - 10 ) * 20;
+    scene.add( mesh );
 
-  requestAnimationFrame(render);
-};
+    material.color.setHSL( Math.random() * 0.2 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
 
+    objects.push( mesh );
 
-var gameLoop = function (dt) {
-  resetPlayer();
-  keyboardControls();
-  applyPhysics(dt);
-  updateCamera();
-};
+  }
 
-var gameViewportSize = function () {
-  return {
-    width: window.innerWidth,
-    height: window.innerHeight
-  };
-};
+  //
 
-document.getElementById('container').appendChild(renderer.domElement);
+  renderer = new THREE.WebGLRenderer();
+  renderer.setClearColor( 0xffffff );
 
-start(gameLoop, gameViewportSize);
+  scene.add(makePlatform(
+    'models/platform/platform.json',
+    'models/platform/platform.jpg',
+    renderer.getMaxAnisotropy()
+  ));
+
+  renderer.setSize( window.innerWidth, window.innerHeight );
+
+  document.body.appendChild( renderer.domElement );
+
+  window.addEventListener( 'resize', onWindowResize, false );
+
+}
+
+function onWindowResize() {
+
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+
+  renderer.setSize( window.innerWidth, window.innerHeight );
+
+}
+
+function animate() {
+
+  requestAnimationFrame( animate );
+
+  controls.isOnObject( false );
+
+  raycaster.ray.origin.copy( controls.getObject().position );
+  raycaster.ray.origin.y -= 10;
+
+  var intersections = raycaster.intersectObjects( objects );
+
+  if ( intersections.length > 0 ) {
+
+    controls.isOnObject( true );
+
+  }
+
+  controls.update();
+
+  renderer.render( scene, camera );
+
+}
