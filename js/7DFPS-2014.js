@@ -13,14 +13,18 @@ var instructions = document.getElementById('instructions');
 
 // http://www.html5rocks.com/en/tutorials/pointerlock/intro/
 
-var havePointerLock = 'pointerLockElement' in document || 'mozPointerLockElement' in document || 'webkitPointerLockElement' in document;
+var havePointerLock = 'pointerLockElement' in document ||
+                    'mozPointerLockElement' in document ||
+                    'webkitPointerLockElement' in document;
 
 if (havePointerLock) {
     var element = document.body;
 
     var pointerlockchange = function (event) {
 
-        if (document.pointerLockElement === element || document.mozPointerLockElement === element || document.webkitPointerLockElement === element) {
+        if (document.pointerLockElement === element ||
+                document.mozPointerLockElement === element ||
+                document.webkitPointerLockElement === element) {
 
             controls.enabled = true;
 
@@ -60,13 +64,17 @@ if (havePointerLock) {
         instructions.style.display = 'none';
 
         // Ask the browser to lock the pointer
-        element.requestPointerLock = element.requestPointerLock || element.mozRequestPointerLock || element.webkitRequestPointerLock;
+        element.requestPointerLock = element.requestPointerLock ||
+                                    element.mozRequestPointerLock ||
+                                    element.webkitRequestPointerLock;
 
         if (/Firefox/i.test(navigator.userAgent)) {
 
             var fullscreenchange = function (event) {
 
-                if (document.fullscreenElement === element || document.mozFullscreenElement === element || document.mozFullScreenElement === element) {
+                if (document.fullscreenElement === element ||
+                        document.mozFullscreenElement === element ||
+                        document.mozFullScreenElement === element) {
 
                     document.removeEventListener('fullscreenchange', fullscreenchange);
                     document.removeEventListener('mozfullscreenchange', fullscreenchange);
@@ -79,7 +87,10 @@ if (havePointerLock) {
             document.addEventListener('fullscreenchange', fullscreenchange, false);
             document.addEventListener('mozfullscreenchange', fullscreenchange, false);
 
-            element.requestFullscreen = element.requestFullscreen || element.mozRequestFullscreen || element.mozRequestFullScreen || element.webkitRequestFullscreen;
+            element.requestFullscreen = element.requestFullscreen ||
+                                        element.mozRequestFullscreen ||
+                                        element.mozRequestFullScreen ||
+                                        element.webkitRequestFullscreen;
 
             element.requestFullscreen();
 
@@ -109,7 +120,8 @@ function makePlatform(jsonUrl, textureUrl, textureQuality) {
 
         geometry.computeFaceNormals();
 
-        var platform = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map : texture }));
+        var platform = new THREE.Mesh(geometry,
+            new THREE.MeshBasicMaterial({ map : texture }));
 
         platform.name = "platform";
 
@@ -164,7 +176,11 @@ function init() {
 
     for (i = 0; i < 500; i += 1) {
 
-        // material = new THREE.MeshPhongMaterial({ specular: 0xffffff, shading: THREE.FlatShading, vertexColors: THREE.VertexColors });
+        // material = new THREE.MeshPhongMaterial({
+        //     specular: 0xffffff,
+        //     shading: THREE.FlatShading,
+        //     vertexColors: THREE.VertexColors
+        // });
 
         mesh = new THREE.Mesh(geometry, material);
         mesh.position.x = Math.floor(Math.random() * 20 - 10) * 20;
