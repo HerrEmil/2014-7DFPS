@@ -143,10 +143,12 @@ function onWindowResize() {
 
 }
 
+var triHexMeshes = [];
+
 // Places trihex mesh in front of camera
 function makeTrihexMesh() {
     // Simple box for now
-    var geometry = new THREE.BoxGeometry(10, 10, 10),
+    var geometry = new THREE.BoxGeometry(5, 5, 5),
     // Doggy texture
         material = new THREE.MeshLambertMaterial({
             map: THREE.ImageUtils.loadTexture('textures/b7e.jpg')
@@ -154,8 +156,15 @@ function makeTrihexMesh() {
     // Put them together
         mesh = new THREE.Mesh(geometry, material);
 
+    // This keeps getting longer, should have max amount of shots
+    // If I limit this array, need to put pieces attached to enemies elsewhere
+    triHexMeshes[triHexMeshes.length] = mesh;
+
     camera.add(mesh);
-    mesh.position.set(0, 0, -20);
+    // Placing it like this makes you look down on it, no good
+    // Ideally, it's not part of the world, it's part of UI
+    // Actual piece should fly from center of screen
+    mesh.position.set(0, -5, -20);
 }
 
 function init() {
@@ -251,6 +260,31 @@ function animate() {
     renderer.render(scene, camera);
 
 }
+
+function shootTrihexMesh() {
+    // Detach piece from camera
+    THREE.SceneUtils.detach(triHexMeshes[triHexMeshes.length - 1], camera, scene);
+    // Set velocity forwards
+    // Remember to delete the object later
+
+    // Make new one
+    makeTrihexMesh();
+}
+
+function rotateTrihexMesh() {
+    //
+}
+
+// Mouse controls
+document.addEventListener('mousedown', function (e) {
+    if (e.button === 0) { // if IE<=9, should be 1, but whatevs
+        // Shoot current piece
+        shootTrihexMesh();
+    } else if (e.button === 2) {
+        // Rotate current piece
+        rotateTrihexMesh();
+    }
+}, false);
 
 init();
 animate();
