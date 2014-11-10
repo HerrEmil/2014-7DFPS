@@ -143,6 +143,21 @@ function onWindowResize() {
 
 }
 
+// Places trihex mesh in front of camera
+function makeTrihexMesh() {
+    // Simple box for now
+    var geometry = new THREE.BoxGeometry(10, 10, 10),
+    // Doggy texture
+        material = new THREE.MeshLambertMaterial({
+            map: THREE.ImageUtils.loadTexture('textures/b7e.jpg')
+        }),
+    // Put them together
+        mesh = new THREE.Mesh(geometry, material);
+
+    camera.add(mesh);
+    mesh.position.set(0, 0, -20);
+}
+
 function init() {
     var i, mesh,
         light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
@@ -194,7 +209,8 @@ function init() {
 
     }
 
-    //
+    // Object placed in front of camera
+    makeTrihexMesh();
 
     renderer = new THREE.WebGLRenderer();
     renderer.setClearColor(0xffffff);
