@@ -271,8 +271,17 @@ function shootTrihexMesh() {
     makeTrihexMesh();
 }
 
+function degInRad(deg) {
+    return deg * Math.PI / 180;
+}  
+
 function rotateTrihexMesh() {
     //
+    var axis = new THREE.Vector3(0, 0, 1),
+        radians = degInRad(-60);
+    mesh = triHexMeshes[triHexMeshes.length - 1];
+
+    mesh.rotateOnAxis(axis, radians);
 }
 
 // Mouse controls
