@@ -1,4 +1,5 @@
-/*global document, window, THREE*/
+/*jslint browser: true*/
+/*global THREE, requestAnimationFrame*/
 
 var camera, scene, renderer;
 var geometry, material, mesh;
@@ -13,14 +14,25 @@ var instructions = document.getElementById('instructions');
 
 // http://www.html5rocks.com/en/tutorials/pointerlock/intro/
 
-var havePointerLock = 'pointerLockElement' in document ||
-                    'mozPointerLockElement' in document ||
-                    'webkitPointerLockElement' in document;
+// jslint says no
+// var havePointerLock = 'pointerLockElement' in document ||
+//                     'mozPointerLockElement' in document ||
+//                     'webkitPointerLockElement' in document;
+
+// Firefox says no
+// var havePointerLock = document.hasOwnProperty('pointerLockElement') ||
+//                     document.hasOwnProperty('mozPointerLockElement') ||
+//                     document.hasOwnProperty('webkitPointerLockElement');
+
+// Success!
+var havePointerLock = document.pointerLockElement !== undefined ||
+                        document.mozPointerLockElement !== undefined ||
+                        document.webkitPointerLockElement !== undefined;
 
 if (havePointerLock) {
     var element = document.body;
 
-    var pointerlockchange = function (event) {
+    var pointerlockchange = function () {
         'use strict';
 
         if (document.pointerLockElement === element ||
@@ -45,7 +57,7 @@ if (havePointerLock) {
 
     };
 
-    var pointerlockerror = function (event) {
+    var pointerlockerror = function () {
         'use strict';
 
         instructions.style.display = '';
@@ -61,7 +73,7 @@ if (havePointerLock) {
     document.addEventListener('mozpointerlockerror', pointerlockerror, false);
     document.addEventListener('webkitpointerlockerror', pointerlockerror, false);
 
-    instructions.addEventListener('click', function (event) {
+    instructions.addEventListener('click', function () {
         'use strict';
 
         instructions.style.display = 'none';
@@ -73,7 +85,7 @@ if (havePointerLock) {
 
         if (/Firefox/i.test(navigator.userAgent)) {
 
-            var fullscreenchange = function (event) {
+            var fullscreenchange = function () {
 
                 if (document.fullscreenElement === element ||
                         document.mozFullscreenElement === element ||
