@@ -21,6 +21,7 @@ if (havePointerLock) {
     var element = document.body;
 
     var pointerlockchange = function (event) {
+        'use strict';
 
         if (document.pointerLockElement === element ||
                 document.mozPointerLockElement === element ||
@@ -45,6 +46,7 @@ if (havePointerLock) {
     };
 
     var pointerlockerror = function (event) {
+        'use strict';
 
         instructions.style.display = '';
 
@@ -60,6 +62,7 @@ if (havePointerLock) {
     document.addEventListener('webkitpointerlockerror', pointerlockerror, false);
 
     instructions.addEventListener('click', function (event) {
+        'use strict';
 
         instructions.style.display = 'none';
 
@@ -110,6 +113,7 @@ if (havePointerLock) {
 
 // Loading 3D model, from misc FPS example
 function makePlatform(jsonUrl, textureUrl, textureQuality) {
+    'use strict';
     var placeholder = new THREE.Object3D(),
         texture = THREE.ImageUtils.loadTexture(textureUrl),
         loader = new THREE.JSONLoader();
@@ -135,6 +139,7 @@ function makePlatform(jsonUrl, textureUrl, textureQuality) {
 }
 
 function onWindowResize() {
+    'use strict';
 
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -147,6 +152,7 @@ var triHexMeshes = [];
 
 // Places trihex mesh in front of camera
 function makeTrihexMesh() {
+    'use strict';
     // Simple box for now
     var geometry = new THREE.BoxGeometry(5, 5, 5),
     // Doggy texture
@@ -168,6 +174,7 @@ function makeTrihexMesh() {
 }
 
 function init() {
+    'use strict';
     var i, mesh,
         light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
 
@@ -235,6 +242,7 @@ function init() {
 }
 
 function animate() {
+    'use strict';
 
     requestAnimationFrame(animate);
 
@@ -258,6 +266,7 @@ function animate() {
 }
 
 function shootTrihexMesh() {
+    'use strict';
     // Detach piece from camera
     THREE.SceneUtils.detach(triHexMeshes[triHexMeshes.length - 1], camera, scene);
     // Set velocity forwards
@@ -268,11 +277,12 @@ function shootTrihexMesh() {
 }
 
 function degInRad(deg) {
+    'use strict';
     return deg * Math.PI / 180;
 }
 
 function rotateTrihexMesh() {
-    //
+    'use strict';
     var axis = new THREE.Vector3(0, 0, 1),
         radians = degInRad(-60);
     mesh = triHexMeshes[triHexMeshes.length - 1];
@@ -282,6 +292,7 @@ function rotateTrihexMesh() {
 
 // Mouse controls
 document.addEventListener('mousedown', function (e) {
+    'use strict';
     if (e.button === 0) { // if IE<=9, should be 1, but whatevs
         // Shoot current piece
         shootTrihexMesh();
