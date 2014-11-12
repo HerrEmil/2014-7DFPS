@@ -198,19 +198,13 @@ function init() {
     // objects
     geometry = new THREE.BoxGeometry(20, 20, 20);
 
-    for (i = 0; i < 500; i += 1) {
+    for ( var i = 0; i < 500; i ++ ) {
+        var mesh = new THREE.Mesh( geometry, material );
+        mesh.position.x = Math.floor( Math.random() * 20 - 10 ) * 20;
+        mesh.position.y = Math.floor( Math.random() * 20 ) * 20 + 10;
+        mesh.position.z = Math.floor( Math.random() * 20 - 10 ) * 20;
+        scene.add( mesh );
 
-        // material = new THREE.MeshPhongMaterial({
-        //     specular: 0xffffff,
-        //     shading: THREE.FlatShading,
-        //     vertexColors: THREE.VertexColors
-        // });
-
-        mesh = new THREE.Mesh(geometry, material);
-        mesh.position.x = Math.floor(Math.random() * 20 - 10) * 20;
-        mesh.position.y = Math.floor(Math.random() * 20) * 20 + 10;
-        mesh.position.z = Math.floor(Math.random() * 20 - 10) * 20;
-        scene.add(mesh);
 
         material.color.setHSL(Math.random() * 0.2 + 0.5, 0.75, Math.random() * 0.25 + 0.75);
 
@@ -221,8 +215,10 @@ function init() {
     // Object placed in front of camera
     makeTrihexMesh();
 
-    renderer = new THREE.WebGLRenderer();
-    renderer.setClearColor(0xffffff);
+
+  renderer = new THREE.WebGLRenderer();
+  renderer.setClearColor( 0x7FDBFF );
+
 
     scene.add(makePlatform(
         'models/platform/platform.json',
