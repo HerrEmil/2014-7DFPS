@@ -204,6 +204,9 @@ function init() {
     raycaster = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, 10);
 
     // floor
+    // THREE.PlaneGeometry: Consider using THREE.PlaneBufferGeometry for lower memory footprint.
+    // Changing to PlaneBufferGeometry causes:
+    // [.WebGLRenderingContext]GL ERROR :GL_INVALID_OPERATION : glDrawElements: range out of bounds for buffer 
     geometry = new THREE.PlaneGeometry(200, 200, 1, 1);
     geometry.applyMatrix(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
 
