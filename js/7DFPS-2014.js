@@ -276,15 +276,11 @@ function shootTrihexMesh() {
     makeTrihexMesh();
 }
 
-function degInRad(deg) {
+function rotateTrihexMesh(degrees) {
     'use strict';
-    return deg * Math.PI / 180;
-}
-
-function rotateTrihexMesh() {
-    'use strict';
-    var axis = new THREE.Vector3(0, 0, 1),
-        radians = degInRad(-60);
+    // Clockwise
+    var axis = new THREE.Vector3(0, 0, -1),
+        radians = degrees * Math.PI / 180;
     mesh = triHexMeshes[triHexMeshes.length - 1];
 
     mesh.rotateOnAxis(axis, radians);
@@ -297,8 +293,8 @@ document.addEventListener('mousedown', function (e) {
         // Shoot current piece
         shootTrihexMesh();
     } else if (e.button === 2) {
-        // Rotate current piece
-        rotateTrihexMesh();
+        // Rotate current piece by degrees
+        rotateTrihexMesh(60);
     }
 }, false);
 
