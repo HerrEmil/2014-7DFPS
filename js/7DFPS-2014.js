@@ -256,6 +256,16 @@ function init() {
 
 }
 
+function updateTrihexPositions() {
+    var i,
+        allButLast = triHexMeshes.length - 1;
+    // For each trihex except the last one
+    for (i = 0; i < allButLast; i += 1) {
+        // Should take time delta instead of constant
+        triHexMeshes[i].translateZ(-1);
+    }
+}
+
 function animate() {
     'use strict';
 
@@ -274,6 +284,8 @@ function animate() {
 
     }
 
+    updateTrihexPositions();
+
     controls.update();
 
     renderer.render(scene, camera);
@@ -282,9 +294,9 @@ function animate() {
 
 function shootTrihexMesh() {
     'use strict';
+    var lastMesh = triHexMeshes[triHexMeshes.length - 1];
     // Detach piece from camera
-    THREE.SceneUtils.detach(triHexMeshes[triHexMeshes.length - 1], camera, scene);
-    // Set velocity forwards
+    THREE.SceneUtils.detach(lastMesh, camera, scene);
     // Remember to delete the object later
 
     // Make new one
