@@ -1,8 +1,8 @@
 /*jslint browser: true*/
 /*global THREE, requestAnimationFrame*/
 
-var camera, scene, renderer;
-var geometry, material, mesh;
+var camera, scene, sceneHUD, renderer;
+var geometry, material, mesh, meshHUD;
 var controls;
 
 var objects = [];
@@ -172,17 +172,26 @@ function makeTrihexMesh() {
             map: THREE.ImageUtils.loadTexture('textures/b7e.jpg')
         }),
     // Put them together
-        mesh = new THREE.Mesh(geometry, material);
+        mesh = new THREE.Mesh(geometry, material),
+        meshHUD = new THREE.Mesh(geometry, material);
+
+    // Name the HUD mesh so I can access it later
+    // Might not be needed if the HUD scene always only has one child
+    meshHUD.name = (triHexMeshes.length + 1);
 
     // This keeps getting longer, should have max amount of shots
     // If I limit this array, need to put pieces attached to enemies elsewhere
     triHexMeshes[triHexMeshes.length] = mesh;
 
+    // Remove previous HUD piece, add new one
+    sceneHUD.remove(sceneHUD.children[sceneHUD.children.length - 1]);
+    sceneHUD.add(meshHUD);
+
     camera.add(mesh);
     // Placing it like this makes you look down on it, no good
     // Ideally, it's not part of the world, it's part of UI
     // Actual piece should fly from center of screen
-    mesh.position.set(0, -5, -20);
+    mesh.position.set(0, 0, -20);
 }
 
 function init() {
@@ -193,6 +202,7 @@ function init() {
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1000);
 
     scene = new THREE.Scene();
+    sceneHUD = new THREE.Scene();
     scene.fog = new THREE.Fog(0xffffff, 0, 750);
 
     light.position.set(0.5, 1, 0.75);
@@ -240,6 +250,7 @@ function init() {
 
     renderer = new THREE.WebGLRenderer();
     renderer.setClearColor(0x7FDBFF);
+    renderer.autoClear = false;
 
 
     scene.add(makePlatform(
@@ -257,6 +268,7 @@ function init() {
 }
 
 function updateTrihexPositions() {
+    'use strict';
     var i,
         allButLast = triHexMeshes.length - 1;
     // For each trihex except the last one
@@ -264,6 +276,16 @@ function updateTrihexPositions() {
         // Should take time delta instead of constant
         triHexMeshes[i].translateZ(-1);
     }
+}
+
+function updateHUD() {
+    'use strict';
+    // Get world position of actual piece
+    var vector = new THREE.Vector3();
+    vector.setFromMatrixPosition(triHexMeshes[triHexMeshes.length - 1].matrixWorld);
+    //console.log(vector);
+    meshHUD = sceneHUD.getObjectByName(triHexMeshes.length);
+    meshHUD.position.set(vector.x, vector.y, vector.z);
 }
 
 function animate() {
@@ -288,16 +310,32 @@ function animate() {
 
     controls.update();
 
+    renderer.clear();
     renderer.render(scene, camera);
+
+    // var lastMesh = triHexMeshes[triHexMeshes.length - 1];
+    // THREE.SceneUtils.detach(lastMesh, camera, scene);
+    // sceneHUD.add(lastMesh);
+    updateHUD();
+
+    // Piece in hand in its own "hud" scene, rendered on top of everything else
+    renderer.clearDepth();
+    renderer.render(sceneHUD, camera);
 
 }
 
 function shootTrihexMesh() {
     'use strict';
     var lastMesh = triHexMeshes[triHexMeshes.length - 1];
+
     // Detach piece from camera
     THREE.SceneUtils.detach(lastMesh, camera, scene);
     // Remember to delete the object later
+
+    // If I display the piece in hand below center,
+    // I have to remember to put it back up before it starts animating
+    // lastMesh.translateY(15);
+
 
     // Make new one
     makeTrihexMesh();
