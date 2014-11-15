@@ -188,8 +188,10 @@ function makeTrihexMesh() {
     // If I limit this array, need to put pieces attached to enemies elsewhere
     triHexMeshes[triHexMeshes.length] = mesh;
 
-    // Remove previous HUD piece, add new one
-    sceneHUD.remove(sceneHUD.children[sceneHUD.children.length - 1]);
+    // Remove previous HUD piece, add new one, don't remove first child (which is light)
+    if (sceneHUD.children.length !== 1) {
+        sceneHUD.remove(sceneHUD.children[sceneHUD.children.length - 1]);
+    }
     sceneHUD.add(meshHUD);
 
     camera.add(mesh);
@@ -202,7 +204,8 @@ function makeTrihexMesh() {
 function init() {
     'use strict';
     var i, mesh,
-        light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
+        light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75),
+        lightHUD = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
 
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1000);
 
@@ -212,6 +215,9 @@ function init() {
 
     light.position.set(0.5, 1, 0.75);
     scene.add(light);
+
+    lightHUD.position.set(0.5, 1, 0.75);
+    sceneHUD.add(lightHUD);
 
     controls = new THREE.PointerLockControls(camera);
     scene.add(controls.getObject());
