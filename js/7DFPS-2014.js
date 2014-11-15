@@ -171,7 +171,7 @@ var triHexMeshes = [];
 function makeTrihexMesh() {
     'use strict';
     // Simple box for now
-    geometry = new THREE.BoxGeometry(5, 5, 5);
+    geometry = new THREE.BoxGeometry(2, 2, 2);
     // Doggy texture
     material = new THREE.MeshLambertMaterial({
         map: THREE.ImageUtils.loadTexture('textures/b7e.jpg')
