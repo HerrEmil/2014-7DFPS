@@ -171,14 +171,14 @@ var triHexMeshes = [];
 function makeTrihexMesh() {
     'use strict';
     // Simple box for now
-    var geometry = new THREE.BoxGeometry(5, 5, 5),
+    geometry = new THREE.BoxGeometry(5, 5, 5);
     // Doggy texture
-        material = new THREE.MeshLambertMaterial({
-            map: THREE.ImageUtils.loadTexture('textures/b7e.jpg')
-        }),
+    material = new THREE.MeshLambertMaterial({
+        map: THREE.ImageUtils.loadTexture('textures/b7e.jpg')
+    });
     // Put them together
-        mesh = new THREE.Mesh(geometry, material),
-        meshHUD = new THREE.Mesh(geometry, material);
+    mesh = new THREE.Mesh(geometry, material);
+    meshHUD = new THREE.Mesh(geometry, material);
 
     // Name the HUD mesh so I can access it later
     // Might not be needed if the HUD scene always only has one child
@@ -271,11 +271,11 @@ function init() {
     window.addEventListener('resize', onWindowResize, false);
 
 }
+var i, allButLast;
 
 function updateTrihexPositions() {
     'use strict';
-    var i,
-        allButLast = triHexMeshes.length - 1;
+    allButLast = triHexMeshes.length - 1;
     // For each trihex except the last one (which is the one you're holding)
     for (i = 0; i < allButLast; i += 1) {
         // Should take time delta instead of constant
@@ -297,9 +297,11 @@ function updateHUD() {
 
     // Get world rotation
     mesh.matrixWorld.decompose(position, quaternion, scale);
-    // Set worl rotation
+    // Set world rotation
     meshHUD.quaternion.copy(quaternion);
 }
+
+var intersections;
 
 function animate() {
     'use strict';
@@ -311,7 +313,7 @@ function animate() {
     raycaster.ray.origin.copy(controls.getObject().position);
     raycaster.ray.origin.y -= 10;
 
-    var intersections = raycaster.intersectObjects(objects);
+    intersections = raycaster.intersectObjects(objects);
 
     if (intersections.length > 0) {
 
