@@ -4,6 +4,11 @@
 var camera, scene, sceneHUD, renderer;
 var geometry, material, mesh, meshHUD;
 var controls;
+// Need these to copy current piece from regular scene to HUD
+var vector = new THREE.Vector3();
+var position = new THREE.Vector3();
+var quaternion = new THREE.Quaternion();
+var scale = new THREE.Vector3();
 
 var objects = [];
 
@@ -191,7 +196,7 @@ function makeTrihexMesh() {
     // Placing it like this makes you look down on it, no good
     // Ideally, it's not part of the world, it's part of UI
     // Actual piece should fly from center of screen
-    mesh.position.set(0, 0, -20);
+    mesh.position.set(0, -10, -20);
 }
 
 function init() {
@@ -271,7 +276,7 @@ function updateTrihexPositions() {
     'use strict';
     var i,
         allButLast = triHexMeshes.length - 1;
-    // For each trihex except the last one
+    // For each trihex except the last one (which is the one you're holding)
     for (i = 0; i < allButLast; i += 1) {
         // Should take time delta instead of constant
         triHexMeshes[i].translateZ(-1);
@@ -280,12 +285,20 @@ function updateTrihexPositions() {
 
 function updateHUD() {
     'use strict';
-    // Get world position of actual piece
-    var vector = new THREE.Vector3();
-    vector.setFromMatrixPosition(triHexMeshes[triHexMeshes.length - 1].matrixWorld);
-    //console.log(vector);
+
+    // Get HUD object and regular object
     meshHUD = sceneHUD.getObjectByName(triHexMeshes.length);
+    mesh = triHexMeshes[triHexMeshes.length - 1];
+
+    // Get world position
+    vector.setFromMatrixPosition(mesh.matrixWorld);
+    // Set world position
     meshHUD.position.set(vector.x, vector.y, vector.z);
+
+    // Get world rotation
+    mesh.matrixWorld.decompose(position, quaternion, scale);
+    // Set worl rotation
+    meshHUD.quaternion.copy(quaternion);
 }
 
 function animate() {
@@ -313,9 +326,6 @@ function animate() {
     renderer.clear();
     renderer.render(scene, camera);
 
-    // var lastMesh = triHexMeshes[triHexMeshes.length - 1];
-    // THREE.SceneUtils.detach(lastMesh, camera, scene);
-    // sceneHUD.add(lastMesh);
     updateHUD();
 
     // Piece in hand in its own "hud" scene, rendered on top of everything else
@@ -326,16 +336,15 @@ function animate() {
 
 function shootTrihexMesh() {
     'use strict';
-    var lastMesh = triHexMeshes[triHexMeshes.length - 1];
+    mesh = triHexMeshes[triHexMeshes.length - 1];
 
     // Detach piece from camera
-    THREE.SceneUtils.detach(lastMesh, camera, scene);
+    THREE.SceneUtils.detach(mesh, camera, scene);
     // Remember to delete the object later
 
-    // If I display the piece in hand below center,
-    // I have to remember to put it back up before it starts animating
-    // lastMesh.translateY(15);
-
+    // Get piece's world position and move back up to center of the screen
+    vector.setFromMatrixPosition(mesh.matrixWorld);
+    mesh.position.set(vector.x, vector.y + 10, vector.z);
 
     // Make new one
     makeTrihexMesh();
