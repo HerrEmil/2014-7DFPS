@@ -1,384 +1,316 @@
 /*jslint browser: true*/
 /*global THREE, requestAnimationFrame*/
 
-var camera, scene, sceneHUD, renderer;
-var geometry, material, mesh, meshHUD;
-var controls;
+let camera;
+
+let scene;
+let sceneHUD;
+let renderer;
+let geometry;
+let material;
+let mesh;
+let meshHUD;
+let controls;
 // Need these to copy current piece from regular scene to HUD
-var vector = new THREE.Vector3();
-var position = new THREE.Vector3();
-var quaternion = new THREE.Quaternion();
-var scale = new THREE.Vector3();
+const vector = new THREE.Vector3();
+const position = new THREE.Vector3();
+const quaternion = new THREE.Quaternion();
+const scale = new THREE.Vector3();
 
-var objects = [];
+const objects = [];
 
-var raycaster;
+let raycaster;
 
-var blocker = document.getElementById('blocker');
-var instructions = document.getElementById('instructions');
+const blocker = document.getElementById("blocker");
+const instructions = document.getElementById("instructions");
 
 // http://www.html5rocks.com/en/tutorials/pointerlock/intro/
 
-// jslint says no
-// var havePointerLock = 'pointerLockElement' in document ||
-//                     'mozPointerLockElement' in document ||
-//                     'webkitPointerLockElement' in document;
+const element = document.body;
 
-// Firefox says no
-// var havePointerLock = document.hasOwnProperty('pointerLockElement') ||
-//                     document.hasOwnProperty('mozPointerLockElement') ||
-//                     document.hasOwnProperty('webkitPointerLockElement');
+const pointerlockchange = () => {
+  if (document.pointerLockElement === element) {
+    controls.enabled = true;
 
-// Success!
-var havePointerLock = document.pointerLockElement !== undefined ||
-                        document.mozPointerLockElement !== undefined ||
-                        document.webkitPointerLockElement !== undefined;
+    blocker.style.display = "none";
+  } else {
+    controls.enabled = false;
 
-if (havePointerLock) {
-    var element = document.body;
+    blocker.style.display = "box";
 
-    var pointerlockchange = function () {
-        'use strict';
+    instructions.style.display = "";
+  }
+};
 
-        if (document.pointerLockElement === element ||
-                document.mozPointerLockElement === element ||
-                document.webkitPointerLockElement === element) {
+const pointerlockerror = () => {
+  instructions.style.display = "";
+};
 
-            controls.enabled = true;
+// Hook pointer lock state change events
+document.addEventListener("pointerlockchange", pointerlockchange, false);
+document.addEventListener("pointerlockerror", pointerlockerror, false);
 
-            blocker.style.display = 'none';
-
-        } else {
-
-            controls.enabled = false;
-
-            blocker.style.display = '-webkit-box';
-            blocker.style.display = '-moz-box';
-            blocker.style.display = 'box';
-
-            instructions.style.display = '';
-
-        }
-
-    };
-
-    var pointerlockerror = function () {
-        'use strict';
-
-        instructions.style.display = '';
-
-    };
-
-    // Hook pointer lock state change events
-    document.addEventListener('pointerlockchange', pointerlockchange, false);
-    document.addEventListener('mozpointerlockchange', pointerlockchange, false);
-    document.addEventListener('webkitpointerlockchange', pointerlockchange, false);
-
-    document.addEventListener('pointerlockerror', pointerlockerror, false);
-    document.addEventListener('mozpointerlockerror', pointerlockerror, false);
-    document.addEventListener('webkitpointerlockerror', pointerlockerror, false);
-
-    instructions.addEventListener('click', function () {
-        'use strict';
-
-        instructions.style.display = 'none';
-
-        // Ask the browser to lock the pointer
-        element.requestPointerLock = element.requestPointerLock ||
-                                    element.mozRequestPointerLock ||
-                                    element.webkitRequestPointerLock;
-
-        if (/Firefox/i.test(navigator.userAgent)) {
-
-            var fullscreenchange = function () {
-
-                if (document.fullscreenElement === element ||
-                        document.mozFullscreenElement === element ||
-                        document.mozFullScreenElement === element) {
-
-                    document.removeEventListener('fullscreenchange', fullscreenchange);
-                    document.removeEventListener('mozfullscreenchange', fullscreenchange);
-
-                    element.requestPointerLock();
-                }
-
-            };
-
-            document.addEventListener('fullscreenchange', fullscreenchange, false);
-            document.addEventListener('mozfullscreenchange', fullscreenchange, false);
-
-            element.requestFullscreen = element.requestFullscreen ||
-                                        element.mozRequestFullscreen ||
-                                        element.mozRequestFullScreen ||
-                                        element.webkitRequestFullscreen;
-
-            element.requestFullscreen();
-
-        } else {
-
-            element.requestPointerLock();
-
-        }
-
-    }, false);
-
-} else {
-
-    instructions.innerHTML = 'Your browser doesn\'t seem to support Pointer Lock API';
-
-}
+instructions.addEventListener(
+  "click",
+  () => {
+    instructions.style.display = "none";
+    // Ask the browser to lock the pointer
+    element.requestPointerLock();
+  },
+  false
+);
 
 // Loading 3D model, from misc FPS example
 function makePlatform(jsonUrl, textureUrl, textureQuality) {
-    'use strict';
-    var placeholder = new THREE.Object3D(),
-        texture = THREE.ImageUtils.loadTexture(textureUrl),
-        loader = new THREE.JSONLoader();
+  const placeholder = new THREE.Object3D();
+  const texture = THREE.ImageUtils.loadTexture(textureUrl);
+  const loader = new THREE.JSONLoader();
 
-    texture.anisotropy = textureQuality;
+  texture.anisotropy = textureQuality;
 
-    loader.load(jsonUrl, function (geometry) {
+  loader.load(jsonUrl, (platformGeometry) => {
+    platformGeometry.computeFaceNormals();
 
-        geometry.computeFaceNormals();
+    const platform = new THREE.Mesh(
+      platformGeometry,
+      new THREE.MeshBasicMaterial({ map: texture })
+    );
 
-        var platform = new THREE.Mesh(geometry,
-            new THREE.MeshBasicMaterial({ map : texture }));
+    platform.name = "platform";
 
-        platform.name = "platform";
+    placeholder.add(platform);
+  });
 
-        placeholder.add(platform);
-    });
+  // translateX, translateY, translateZ to move model by distance
+  placeholder.translateY(1);
 
-    // translatex, translateY, translateZ to move model by distance
-    placeholder.translateY(1);
-
-    return placeholder;
+  return placeholder;
 }
 
 function onWindowResize() {
-    'use strict';
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
 
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-
-    renderer.setSize(window.innerWidth, window.innerHeight);
-
+  renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-var triHexMeshes = [];
+const triHexMeshes = [];
 
-// Places trihex mesh in front of camera
-function makeTrihexMesh() {
-    'use strict';
-    // Simple box for now
-    geometry = new THREE.BoxGeometry(2, 2, 2);
-    // Doggy texture
-    material = new THREE.MeshLambertMaterial({
-        map: THREE.ImageUtils.loadTexture('textures/b7e.jpg')
-    });
-    // Put them together
-    mesh = new THREE.Mesh(geometry, material);
-    meshHUD = new THREE.Mesh(geometry, material);
+// Places triHex mesh in front of camera
+function makeTriHexMesh() {
+  // Simple box for now
+  geometry = new THREE.BoxGeometry(2, 2, 2);
+  // Doggy texture
+  material = new THREE.MeshLambertMaterial({
+    map: THREE.ImageUtils.loadTexture("textures/b7e.jpg"),
+  });
+  // Put them together
+  mesh = new THREE.Mesh(geometry, material);
+  meshHUD = new THREE.Mesh(geometry, material);
 
-    // Name the HUD mesh so I can access it later
-    // Might not be needed if the HUD scene always only has one child
-    meshHUD.name = (triHexMeshes.length + 1);
+  // Name the HUD mesh so I can access it later
+  // Might not be needed if the HUD scene always only has one child
+  meshHUD.name = triHexMeshes.length + 1;
 
-    // This keeps getting longer, should have max amount of shots
-    // If I limit this array, need to put pieces attached to enemies elsewhere
-    triHexMeshes[triHexMeshes.length] = mesh;
+  // This keeps getting longer, should have max amount of shots
+  // If I limit this array, need to put pieces attached to enemies elsewhere
+  triHexMeshes[triHexMeshes.length] = mesh;
 
-    // Remove previous HUD piece, add new one, don't remove first child (which is light)
-    if (sceneHUD.children.length !== 1) {
-        sceneHUD.remove(sceneHUD.children[sceneHUD.children.length - 1]);
-    }
-    sceneHUD.add(meshHUD);
+  // Remove previous HUD piece, add new one, don't remove first child (which is light)
+  if (sceneHUD.children.length !== 1) {
+    sceneHUD.remove(sceneHUD.children[sceneHUD.children.length - 1]);
+  }
+  sceneHUD.add(meshHUD);
 
-    camera.add(mesh);
-    // Placing it like this makes you look down on it, no good
-    // Ideally, it's not part of the world, it's part of UI
-    // Actual piece should fly from center of screen
-    mesh.position.set(0, -10, -20);
+  camera.add(mesh);
+  // Placing it like this makes you look down on it, no good
+  // Ideally, it's not part of the world, it's part of UI
+  // Actual piece should fly from center of screen
+  mesh.position.set(0, -10, -20);
 }
 
 function init() {
-    'use strict';
-    var i, mesh,
-        light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75),
-        lightHUD = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
+  const light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
+  const lightHUD = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
 
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1000);
+  camera = new THREE.PerspectiveCamera(
+    75,
+    window.innerWidth / window.innerHeight,
+    1,
+    1000
+  );
 
-    scene = new THREE.Scene();
-    sceneHUD = new THREE.Scene();
-    scene.fog = new THREE.Fog(0xffffff, 0, 750);
+  scene = new THREE.Scene();
+  sceneHUD = new THREE.Scene();
+  scene.fog = new THREE.Fog(0xffffff, 0, 750);
 
-    light.position.set(0.5, 1, 0.75);
-    scene.add(light);
+  light.position.set(0.5, 1, 0.75);
+  scene.add(light);
 
-    lightHUD.position.set(0.5, 1, 0.75);
-    sceneHUD.add(lightHUD);
+  lightHUD.position.set(0.5, 1, 0.75);
+  sceneHUD.add(lightHUD);
 
-    controls = new THREE.PointerLockControls(camera);
-    scene.add(controls.getObject());
+  controls = new THREE.PointerLockControls(camera);
+  scene.add(controls.getObject());
 
-    raycaster = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, 10);
+  raycaster = new THREE.Raycaster(
+    new THREE.Vector3(),
+    new THREE.Vector3(0, -1, 0),
+    0,
+    10
+  );
 
-    // floor
-    // THREE.PlaneGeometry: Consider using THREE.PlaneBufferGeometry for lower memory footprint.
-    // Changing to PlaneBufferGeometry causes:
-    // [.WebGLRenderingContext]GL ERROR :GL_INVALID_OPERATION : glDrawElements: range out of bounds for buffer 
-    geometry = new THREE.PlaneGeometry(200, 200, 1, 1);
-    geometry.applyMatrix(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+  // floor
+  // THREE.PlaneGeometry: Consider using THREE.PlaneBufferGeometry for lower memory footprint.
+  // Changing to PlaneBufferGeometry causes:
+  // [.WebGLRenderingContext]GL ERROR :GL_INVALID_OPERATION : glDrawElements: range out of bounds for buffer
+  geometry = new THREE.PlaneGeometry(200, 200, 1, 1);
+  geometry.applyMatrix(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
 
-    material = new THREE.MeshLambertMaterial({
-        map: THREE.ImageUtils.loadTexture('textures/b7e.jpg')
-    });
+  material = new THREE.MeshLambertMaterial({
+    map: THREE.ImageUtils.loadTexture("textures/b7e.jpg"),
+  });
 
+  mesh = new THREE.Mesh(geometry, material);
+  scene.add(mesh);
+
+  // objects
+  geometry = new THREE.BoxGeometry(20, 20, 20);
+
+  for (i = 0; i < 500; i += 1) {
     mesh = new THREE.Mesh(geometry, material);
+    mesh.position.x = Math.floor(Math.random() * 20 - 10) * 20;
+    mesh.position.y = Math.floor(Math.random() * 20) * 20 + 10;
+    mesh.position.z = Math.floor(Math.random() * 20 - 10) * 20;
     scene.add(mesh);
 
-    // objects
-    geometry = new THREE.BoxGeometry(20, 20, 20);
+    material.color.setHSL(
+      Math.random() * 0.2 + 0.5,
+      0.75,
+      Math.random() * 0.25 + 0.75
+    );
 
-    for (i = 0; i < 500; i += 1) {
-        mesh = new THREE.Mesh(geometry, material);
-        mesh.position.x = Math.floor(Math.random() * 20 - 10) * 20;
-        mesh.position.y = Math.floor(Math.random() * 20) * 20 + 10;
-        mesh.position.z = Math.floor(Math.random() * 20 - 10) * 20;
-        scene.add(mesh);
+    objects.push(mesh);
+  }
 
+  // Object placed in front of camera
+  makeTriHexMesh();
 
-        material.color.setHSL(Math.random() * 0.2 + 0.5, 0.75, Math.random() * 0.25 + 0.75);
+  renderer = new THREE.WebGLRenderer();
+  renderer.setClearColor(0x7fdbff);
+  renderer.autoClear = false;
 
-        objects.push(mesh);
+  scene.add(
+    makePlatform(
+      "models/platform/platform.json",
+      "models/platform/platform.jpg",
+      renderer.getMaxAnisotropy()
+    )
+  );
 
-    }
+  renderer.setSize(window.innerWidth, window.innerHeight);
 
-    // Object placed in front of camera
-    makeTrihexMesh();
+  document.body.appendChild(renderer.domElement);
 
-
-    renderer = new THREE.WebGLRenderer();
-    renderer.setClearColor(0x7FDBFF);
-    renderer.autoClear = false;
-
-
-    scene.add(makePlatform(
-        'models/platform/platform.json',
-        'models/platform/platform.jpg',
-        renderer.getMaxAnisotropy()
-    ));
-
-    renderer.setSize(window.innerWidth, window.innerHeight);
-
-    document.body.appendChild(renderer.domElement);
-
-    window.addEventListener('resize', onWindowResize, false);
-
+  window.addEventListener("resize", onWindowResize, false);
 }
-var i, allButLast;
+var i;
+let allButLast;
 
-function updateTrihexPositions() {
-    'use strict';
-    allButLast = triHexMeshes.length - 1;
-    // For each trihex except the last one (which is the one you're holding)
-    for (i = 0; i < allButLast; i += 1) {
-        // Should take time delta instead of constant
-        triHexMeshes[i].translateZ(-1);
-    }
+function updateTriHexPositions() {
+  allButLast = triHexMeshes.length - 1;
+  // For each triHex except the last one (which is the one you're holding)
+  for (i = 0; i < allButLast; i += 1) {
+    // Should take time delta instead of constant
+    triHexMeshes[i].translateZ(-1);
+  }
 }
 
 function updateHUD() {
-    'use strict';
+  // Get HUD object and regular object
+  meshHUD = sceneHUD.getObjectByName(triHexMeshes.length);
+  mesh = triHexMeshes[triHexMeshes.length - 1];
 
-    // Get HUD object and regular object
-    meshHUD = sceneHUD.getObjectByName(triHexMeshes.length);
-    mesh = triHexMeshes[triHexMeshes.length - 1];
+  // Get world position
+  vector.setFromMatrixPosition(mesh.matrixWorld);
+  // Set world position
+  meshHUD.position.set(vector.x, vector.y, vector.z);
 
-    // Get world position
-    vector.setFromMatrixPosition(mesh.matrixWorld);
-    // Set world position
-    meshHUD.position.set(vector.x, vector.y, vector.z);
-
-    // Get world rotation
-    mesh.matrixWorld.decompose(position, quaternion, scale);
-    // Set world rotation
-    meshHUD.quaternion.copy(quaternion);
+  // Get world rotation
+  mesh.matrixWorld.decompose(position, quaternion, scale);
+  // Set world rotation
+  meshHUD.quaternion.copy(quaternion);
 }
 
-var intersections;
+let intersections;
 
 function animate() {
-    'use strict';
+  requestAnimationFrame(animate);
 
-    requestAnimationFrame(animate);
+  controls.isOnObject(false);
 
-    controls.isOnObject(false);
+  raycaster.ray.origin.copy(controls.getObject().position);
+  raycaster.ray.origin.y -= 10;
 
-    raycaster.ray.origin.copy(controls.getObject().position);
-    raycaster.ray.origin.y -= 10;
+  intersections = raycaster.intersectObjects(objects);
 
-    intersections = raycaster.intersectObjects(objects);
+  if (intersections.length > 0) {
+    controls.isOnObject(true);
+  }
 
-    if (intersections.length > 0) {
+  updateTriHexPositions();
 
-        controls.isOnObject(true);
+  controls.update();
 
-    }
+  renderer.clear();
+  renderer.render(scene, camera);
 
-    updateTrihexPositions();
+  updateHUD();
 
-    controls.update();
-
-    renderer.clear();
-    renderer.render(scene, camera);
-
-    updateHUD();
-
-    // Piece in hand in its own "hud" scene, rendered on top of everything else
-    renderer.clearDepth();
-    renderer.render(sceneHUD, camera);
-
+  // Piece in hand in its own "hud" scene, rendered on top of everything else
+  renderer.clearDepth();
+  renderer.render(sceneHUD, camera);
 }
 
-function shootTrihexMesh() {
-    'use strict';
-    mesh = triHexMeshes[triHexMeshes.length - 1];
+function shootTriHexMesh() {
+  mesh = triHexMeshes[triHexMeshes.length - 1];
 
-    // Detach piece from camera
-    THREE.SceneUtils.detach(mesh, camera, scene);
-    // Remember to delete the object later
+  // Detach piece from camera
+  THREE.SceneUtils.detach(mesh, camera, scene);
+  // Remember to delete the object later
 
-    // Get piece's world position and move back up to center of the screen
-    vector.setFromMatrixPosition(mesh.matrixWorld);
-    mesh.position.set(vector.x, vector.y + 10, vector.z);
+  // Get piece's world position and move back up to center of the screen
+  vector.setFromMatrixPosition(mesh.matrixWorld);
+  mesh.position.set(vector.x, vector.y + 10, vector.z);
 
-    // Make new one
-    makeTrihexMesh();
+  // Make new one
+  makeTriHexMesh();
 }
 
-function rotateTrihexMesh(degrees) {
-    'use strict';
-    // Clockwise
-    var axis = new THREE.Vector3(0, 0, -1),
-        radians = degrees * Math.PI / 180;
-    mesh = triHexMeshes[triHexMeshes.length - 1];
+function rotateTriHexMesh(degrees) {
+  // Clockwise
+  const axis = new THREE.Vector3(0, 0, -1);
 
-    mesh.rotateOnAxis(axis, radians);
+  const radians = (degrees * Math.PI) / 180;
+  mesh = triHexMeshes[triHexMeshes.length - 1];
+
+  mesh.rotateOnAxis(axis, radians);
 }
 
 // Mouse controls
-document.addEventListener('mousedown', function (e) {
-    'use strict';
-    if (e.button === 0) { // if IE<=9, should be 1, but whatevs
-        // Shoot current piece
-        shootTrihexMesh();
-    } else if (e.button === 2) {
-        // Rotate current piece by degrees
-        rotateTrihexMesh(60);
+document.addEventListener(
+  "mousedown",
+  ({ button }) => {
+    if (button === 0) {
+      // Shoot current piece
+      shootTriHexMesh();
+    } else if (button === 2) {
+      // Rotate current piece by degrees
+      rotateTriHexMesh(60);
     }
-}, false);
+  },
+  false
+);
 
 init();
 animate();
