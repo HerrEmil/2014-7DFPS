@@ -2,19 +2,13 @@
 /*global THREE, requestAnimationFrame*/
 
 let camera;
-
 let scene;
 let sceneHUD;
 let renderer;
-let geometry;
-let material;
 let mesh;
 let meshHUD;
 let controls;
-// Need these to copy current piece from regular scene to HUD
-const vector = new THREE.Vector3();
-const position = new THREE.Vector3();
-const quaternion = new THREE.Quaternion();
+// decompose() needs a scale target; the HUD copy only uses position and rotation
 const scale = new THREE.Vector3();
 
 const objects = [];
@@ -26,17 +20,15 @@ const instructions = document.getElementById("instructions");
 
 // http://www.html5rocks.com/en/tutorials/pointerlock/intro/
 
-const element = document.body;
-
 const pointerlockchange = () => {
-  if (document.pointerLockElement === element) {
+  if (document.pointerLockElement === document.body) {
     controls.enabled = true;
 
     blocker.style.display = "none";
   } else {
     controls.enabled = false;
 
-    blocker.style.display = "box";
+    blocker.style.display = "";
 
     instructions.style.display = "";
   }
@@ -55,10 +47,13 @@ instructions.addEventListener(
   () => {
     instructions.style.display = "none";
     // Ask the browser to lock the pointer
-    element.requestPointerLock();
+    document.body.requestPointerLock();
   },
   false
 );
+
+// Doggy texture, shared by the floor, the boxes and the triHex pieces
+const doggyTexture = THREE.ImageUtils.loadTexture("textures/b7e.jpg");
 
 // Loading 3D model, from misc FPS example
 function makePlatform(jsonUrl, textureUrl, textureQuality) {
@@ -96,25 +91,18 @@ function onWindowResize() {
 
 const triHexMeshes = [];
 
+// Simple box for now — every piece shares this one geometry and material
+const triHexGeometry = new THREE.BoxGeometry(2, 2, 2);
+const triHexMaterial = new THREE.MeshLambertMaterial({ map: doggyTexture });
+
 // Places triHex mesh in front of camera
 function makeTriHexMesh() {
-  // Simple box for now
-  geometry = new THREE.BoxGeometry(2, 2, 2);
-  // Doggy texture
-  material = new THREE.MeshLambertMaterial({
-    map: THREE.ImageUtils.loadTexture("textures/b7e.jpg"),
-  });
-  // Put them together
-  mesh = new THREE.Mesh(geometry, material);
-  meshHUD = new THREE.Mesh(geometry, material);
-
-  // Name the HUD mesh so I can access it later
-  // Might not be needed if the HUD scene always only has one child
-  meshHUD.name = triHexMeshes.length + 1;
+  mesh = new THREE.Mesh(triHexGeometry, triHexMaterial);
+  meshHUD = new THREE.Mesh(triHexGeometry, triHexMaterial);
 
   // This keeps getting longer, should have max amount of shots
   // If I limit this array, need to put pieces attached to enemies elsewhere
-  triHexMeshes[triHexMeshes.length] = mesh;
+  triHexMeshes.push(mesh);
 
   // Remove previous HUD piece, add new one, don't remove first child (which is light)
   if (sceneHUD.children.length !== 1) {
@@ -164,34 +152,32 @@ function init() {
   // THREE.PlaneGeometry: Consider using THREE.PlaneBufferGeometry for lower memory footprint.
   // Changing to PlaneBufferGeometry causes:
   // [.WebGLRenderingContext]GL ERROR :GL_INVALID_OPERATION : glDrawElements: range out of bounds for buffer
-  geometry = new THREE.PlaneGeometry(200, 200, 1, 1);
+  let geometry = new THREE.PlaneGeometry(200, 200, 1, 1);
   geometry.applyMatrix(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
 
-  material = new THREE.MeshLambertMaterial({
-    map: THREE.ImageUtils.loadTexture("textures/b7e.jpg"),
-  });
+  const material = new THREE.MeshLambertMaterial({ map: doggyTexture });
 
-  mesh = new THREE.Mesh(geometry, material);
-  scene.add(mesh);
+  scene.add(new THREE.Mesh(geometry, material));
 
   // objects
   geometry = new THREE.BoxGeometry(20, 20, 20);
 
-  for (i = 0; i < 500; i += 1) {
-    mesh = new THREE.Mesh(geometry, material);
-    mesh.position.x = Math.floor(Math.random() * 20 - 10) * 20;
-    mesh.position.y = Math.floor(Math.random() * 20) * 20 + 10;
-    mesh.position.z = Math.floor(Math.random() * 20 - 10) * 20;
-    scene.add(mesh);
+  for (let i = 0; i < 500; i += 1) {
+    const box = new THREE.Mesh(geometry, material);
+    box.position.x = Math.floor(Math.random() * 20 - 10) * 20;
+    box.position.y = Math.floor(Math.random() * 20) * 20 + 10;
+    box.position.z = Math.floor(Math.random() * 20 - 10) * 20;
+    scene.add(box);
 
-    material.color.setHSL(
-      Math.random() * 0.2 + 0.5,
-      0.75,
-      Math.random() * 0.25 + 0.75
-    );
-
-    objects.push(mesh);
+    objects.push(box);
   }
+
+  // The floor and all boxes share one material, so a single tint colors everything
+  material.color.setHSL(
+    Math.random() * 0.2 + 0.5,
+    0.75,
+    Math.random() * 0.25 + 0.75
+  );
 
   // Object placed in front of camera
   makeTriHexMesh();
@@ -214,7 +200,8 @@ function init() {
 
   window.addEventListener("resize", onWindowResize, false);
 }
-var i;
+
+let i;
 let allButLast;
 
 function updateTriHexPositions() {
@@ -227,36 +214,19 @@ function updateTriHexPositions() {
 }
 
 function updateHUD() {
-  // Get HUD object and regular object
-  meshHUD = sceneHUD.getObjectByName(triHexMeshes.length);
   mesh = triHexMeshes[triHexMeshes.length - 1];
 
-  // Get world position
-  vector.setFromMatrixPosition(mesh.matrixWorld);
-  // Set world position
-  meshHUD.position.set(vector.x, vector.y, vector.z);
-
-  // Get world rotation
-  mesh.matrixWorld.decompose(position, quaternion, scale);
-  // Set world rotation
-  meshHUD.quaternion.copy(quaternion);
+  // Copy world position and rotation from the held piece to its HUD twin
+  mesh.matrixWorld.decompose(meshHUD.position, meshHUD.quaternion, scale);
 }
-
-let intersections;
 
 function animate() {
   requestAnimationFrame(animate);
 
-  controls.isOnObject(false);
-
   raycaster.ray.origin.copy(controls.getObject().position);
   raycaster.ray.origin.y -= 10;
 
-  intersections = raycaster.intersectObjects(objects);
-
-  if (intersections.length > 0) {
-    controls.isOnObject(true);
-  }
+  controls.isOnObject(raycaster.intersectObjects(objects).length > 0);
 
   updateTriHexPositions();
 
@@ -275,26 +245,22 @@ function animate() {
 function shootTriHexMesh() {
   mesh = triHexMeshes[triHexMeshes.length - 1];
 
-  // Detach piece from camera
+  // Detach piece from camera; detach leaves mesh.position in world coordinates
   THREE.SceneUtils.detach(mesh, camera, scene);
   // Remember to delete the object later
 
-  // Get piece's world position and move back up to center of the screen
-  vector.setFromMatrixPosition(mesh.matrixWorld);
-  mesh.position.set(vector.x, vector.y + 10, vector.z);
+  // Move back up to center of the screen
+  mesh.position.y += 10;
 
   // Make new one
   makeTriHexMesh();
 }
 
 function rotateTriHexMesh(degrees) {
-  // Clockwise
-  const axis = new THREE.Vector3(0, 0, -1);
-
-  const radians = (degrees * Math.PI) / 180;
   mesh = triHexMeshes[triHexMeshes.length - 1];
 
-  mesh.rotateOnAxis(axis, radians);
+  // Clockwise
+  mesh.rotateZ(-THREE.Math.degToRad(degrees));
 }
 
 // Mouse controls
