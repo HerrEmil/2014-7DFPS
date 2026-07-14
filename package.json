@@ -1,0 +1,12 @@
+{
+  "name": "2014-7dfps",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Three.js pointer-lock FPS from 7DFPS 2014 (static site, index.html at repo root)",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  }
+}

@@ -257,6 +257,14 @@ function rotateTriHexMesh(degrees) {
 document.addEventListener(
   "mousedown",
   ({ button }) => {
+    // Only act on weapon input while the pointer is locked and the game is
+    // actually being played. Without this guard, clicking the "Click to play"
+    // overlay (or any click while unlocked) fired a shot/rotate and spawned
+    // pieces without bound. Mirrors the enabled-gate used everywhere in
+    // PointerLockControls.
+    if (!controls.enabled) {
+      return;
+    }
     if (button === 0) {
       // Shoot current piece
       shootTriHexMesh();
