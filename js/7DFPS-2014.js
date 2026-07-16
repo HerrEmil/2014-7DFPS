@@ -276,5 +276,23 @@ document.addEventListener(
   false
 );
 
+// Right-click is the "rotate the held piece" control during play (button 2 in
+// the mousedown handler above). But a right-click also fires the browser's
+// default context menu, which steals focus and drops pointer lock — bouncing
+// the player out of the game every single time they try to rotate a piece.
+// Suppress the context menu, but ONLY while actually playing, so the normal
+// browser menu still works on the "Click to play" overlay and anywhere the
+// game is not locked. Same enabled-gate the mousedown handler uses.
+document.addEventListener(
+  "contextmenu",
+  (event) => {
+    if (!controls.enabled) {
+      return;
+    }
+    event.preventDefault();
+  },
+  false
+);
+
 init();
 animate();
