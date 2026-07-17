@@ -485,3 +485,51 @@ rapid re-lock rejection happens in practice) remains **INFERENCE** either way.
   Gameplay-design change; now has a natural companion (the per-frame shot speed
   above).
 - Fog/clear colour mismatch — needs an art call from Emil, see above.
+
+## 2026-07-17 (run 3) — RECON (no fix; GameLand was this run's fix target) — paused Space-pump fling
+
+Cross-game playtest sweep, seeds `177001`–`177099` (6 sessions, mulberry32 PRNG,
+220 input steps each, both viewports + mid-session flips). This run's fix went to
+GameLand (fewest specs + oldest ledger); recording the top 2014-7DFPS finding so
+the next fix run can act on it.
+
+**DEFECT (MAJOR, confirmed, new) — Space keydowns while PAUSED pump `velocity.y`
+without bound; resuming launches the player into the fog ceiling.** Deterministic,
+headlessly confirmed. Sibling of the two already-fixed ungated handlers (mousedown
+07-14, contextmenu 07-16) — same "featureless void" consequence as the fixed
+prevTime teleport, narrower trigger.
+
+Root cause (two halves, both required):
+- `js/PointerLockControls.js` `onKeyDown` case 32 (`velocity.y += 350`) has **no
+  `scope.enabled` gate** — the third ungated input handler in the family.
+- `js/7DFPS-2014.js:220-223` `animate()` calls `controls.isOnObject(...)`
+  unconditionally, **re-arming `canJump` every frame even while paused** (the
+  parked player keeps raycast-hitting the box it rests on). During play the first
+  jump leaves the box and disarms it; during pause it re-arms forever.
+
+Evidence: player parked on `objects[0]` (eye y≈412). 25 frame-interleaved paused
+Space keydowns (what auto-repeat does against the pause overlay) then resume → y
+climbed **+97 units/frame**. The identical 25 presses while PLAYING = one normal
+jump arc. Accumulation is pause-exclusive; floor-standing pause is safe (floor not
+in `objects`, so `canJump` clears).
+
+Fix shape (next run): add `if ( scope.enabled === false ) return;` at the **top of
+`onKeyDown` only** — never `onKeyUp` (a gated keyup would latch movement keys
+across a pause). Existing `regression-pause-teleport.spec.ts` test 2 (displacement
+< 5) must stay green. Regression recipe: park on a box, disable controls, dispatch
+N frame-interleaved Space keydowns, re-enable, assert y-rise over 3 frames < one
+jump arc (fails ~97 u/frame pre-fix); zero-press control pins y unchanged.
+
+Companion one-liner (separate change + test): `delta` is still unclamped on the
+ENABLED path — a sustained >100ms frame makes the `(1 − 10·delta)` damping factor
+negative and teleports the player (measured **332-unit sign-flipped hop** on a
+1.2s stall; the shipped prevTime fix only guards the disabled path). Clamp
+`delta = Math.min((time − prevTime)/1000, 0.1)` in `PointerLockControls.js`
+`update()`. Note this compounds with the open `triHexMeshes` growth item (frames
+slow as it grows → physics eventually detonates).
+
+Lower item, not re-filed: `requestPointerLock()` at `js/7DFPS-2014.js:46` lacks
+`.catch()` (confirmed to reject a promise headlessly). Resolves the ledger's open
+channel-independence question — Playwright `pageerror` **does** report unhandled
+rejections, so the in-page recorder and `pageerror` were never independent
+channels (explains the previously-flagged matching counts).
