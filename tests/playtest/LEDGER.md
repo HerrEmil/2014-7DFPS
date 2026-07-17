@@ -61,10 +61,17 @@ config in this repo, so the perf/lint gate is N/A here.
 - `triHexMeshes` still grows unbounded during legitimate play (one entry per
   shot, never culled) — the source's own TODO. A max-shots cap / recycling of
   off-screen pieces is a deliberate gameplay change worth doing on its own.
-- The stale-`prevTime` first-frame delta in `PointerLockControls.update()` (time
+- ~~The stale-`prevTime` first-frame delta in `PointerLockControls.update()` (time
   accrues while `enabled` is false, then the first played frame sees a huge
   `delta`) is self-correcting via the floor clamp, but resetting `prevTime` on
-  lock-acquire would be tidier.
+  lock-acquire would be tidier.~~
+  **DISPROVEN 2026-07-17 — DO NOT TRUST THIS BULLET.** It is not self-correcting
+  and it is not a tidiness nit: it is a HIGH-severity, softlock-grade teleport
+  (player flung ~4300 units into fogged void on any ESC-and-return). The floor
+  clamp is **Y-only** (`PointerLockControls.js:172-179`); **X and Z are
+  unclamped**, and the damping factor `(1 - 10*delta)` **inverts** for
+  `delta > 0.1s`. See the 2026-07-17 entry — leading candidate for the next fix
+  run, with a proven one-line fix.
 
 ---
 
@@ -150,7 +157,196 @@ zero repo writes, since a separate burn task shares that checkout):**
 - `triHexMeshes` still grows unbounded during legitimate play (one entry per
   shot, never culled) — the source's own TODO. A max-shots cap / recycling of
   off-screen pieces is a deliberate gameplay change worth doing on its own.
-- The stale-`prevTime` first-frame delta in `PointerLockControls.update()` (time
+- ~~The stale-`prevTime` first-frame delta in `PointerLockControls.update()` (time
   accrues while `enabled` is false, then the first played frame sees a huge
   `delta`) is self-correcting via the floor clamp, but resetting `prevTime` on
-  lock-acquire would be tidier.
+  lock-acquire would be tidier.~~
+  **DISPROVEN 2026-07-17 — DO NOT TRUST THIS BULLET.** It is not self-correcting
+  and it is not a tidiness nit: it is a HIGH-severity, softlock-grade teleport
+  (player flung ~4300 units into fogged void on any ESC-and-return). The floor
+  clamp is **Y-only** (`PointerLockControls.js:172-179`); **X and Z are
+  unclamped**, and the damping factor `(1 - 10*delta)` **inverts** for
+  `delta > 0.1s`. See the 2026-07-17 entry — leading candidate for the next fix
+  run, with a proven one-line fix.
+
+---
+
+## 2026-07-17 — RECON ONLY (no code fix) — stale-`prevTime` re-classified HIGH
+
+**Not this run's fix target.** Sandpiper won the selection tiebreak (fewest specs
+AND oldest ledger entry) and was fixed/gated/pushed instead. This run was recon
+only: **no source file was touched**, no spec added, repo left clean on `main`
+@ `7d5209a`. All probes ran as throwaway specs from a scratchpad-local Playwright
+config (`node_modules` symlinked in, webServer serving the repo root read-only),
+so nothing entered the repo tree.
+
+**Seeds this run:** `77010042`, `77011337`, `77012718`, `77013141`, `77014669`
+(range 77010000–77019999; prior runs used 70000–70999, `2026071601`, `76063317`).
+
+---
+
+### DEFECT (HIGH, confirmed, observed headlessly) — stale `prevTime` flings the player out of the world. **LEADING CANDIDATE FOR THE NEXT FIX RUN.**
+
+The two prior entries filed this as "self-correcting via the floor clamp" and
+"would be tidier". **That verdict is wrong.** This is a softlock-grade teleport
+triggered by the single most common pointer-lock interaction there is: press ESC,
+come back.
+
+**Why it was missed (don't re-derive the wrong conclusion).** Prior runs only ever
+tested the *zero-velocity idle* case — fresh boot, no key ever pressed, idle, then
+lock. In that one case the bug genuinely *is* harmless, and the entry generalised
+from it. The trap:
+* The floor clamp (`PointerLockControls.js:172-179`) clamps **Y only**.
+  **X and Z have no clamp at all.**
+* With `velocity` at zero, the X/Z terms contribute nothing and the Y blowup *is*
+  caught — so the idle case looks clean and "proves" the wrong thing.
+* The moment `velocity` is non-zero (i.e. you were *moving* when lock dropped),
+  the damping factor `(1 - 10*delta)` goes **negative** for any `delta > 0.1s`,
+  so velocity is **inverted and amplified** instead of damped. A 3s pause is a
+  **−29×** multiplier.
+* Re-verified the control case this run: 5s idle → lock → position unchanged
+  `[0,10,0]`. The narrow claim holds; the generalisation does not.
+
+**Root cause.**
+* `js/PointerLockControls.js:146` — `this.update()` early-returns when
+  `enabled === false`, **before** `prevTime = time` at `:181`. So `prevTime`
+  freezes for the whole time the pointer is unlocked, and the first played frame
+  computes `delta = (now - prevTime)/1000` = the entire pause duration.
+* `js/PointerLockControls.js:151-152` — `velocity.x -= velocity.x * 10.0 * delta`
+  (the inverting damping term, above).
+* `js/PointerLockControls.js:46` — `onKeyDown` has **no `enabled` gate**, so a
+  movement key latches `moveForward = true` while unlocked; then
+  `:156` `velocity.z -= 400.0 * delta` applies a full pause-length impulse.
+* `js/PointerLockControls.js:170` — `yawObject.translateZ(velocity.z * delta)`
+  applies it. Displacement scales roughly with `delta²`.
+
+**Repro A — key already released (most realistic).** Play ~30 frames holding W,
+release W, set `controls.enabled = false` (what ESC does), wait 3s, re-enable,
+step 2 frames → player at **z = −96.2** becomes **z = +4262.2**: **4358 units in
+one frame, sign-flipped** (flung backwards). A normal frame moves **0.336 units**
+— a **~13,000×** anomaly. Needs no latched key; the damping inversion alone does it.
+
+**Repro B — latched key.** Hold W on the "Click to play" overlay, wait 3s, then
+lock → **z: 0 → −4501.3** in a single frame.
+
+**Causality proof (`delta` is the cause).** Same scenario, varying only the pause:
+500ms → **1.9 units**; 5000ms → **425.9 units**. 10× the pause gives 227× the
+displacement — the expected superlinear (`delta²`) scaling.
+
+**Consequence — why this is softlock-grade, not cosmetic.** No NaN/Infinity; all
+values stay finite. But at `z ≈ 4300` with `THREE.Fog(0xffffff, 0, 750)`
+(`7DFPS-2014.js:126`) everything is fogged pure white, and the 200×200 floor plus
+all 500 boxes are far out of sight. **There is no landmark to navigate back by**,
+and walking back at 400 u/s takes ~11s across a featureless void.
+
+**Proven one-line fix** — `js/PointerLockControls.js:146`:
+```js
+if ( scope.enabled === false ) { prevTime = performance.now(); return; }
+```
+Verified this run by serving a patched `PointerLockControls.js` through Playwright
+**route interception** (zero repo writes — the technique to reuse):
+
+| scenario | unpatched | patched |
+| --- | --- | --- |
+| resume after 3s pause | **3909.9** units | **0.559** |
+| latched-W first frame | **~4500** units | **0.087** |
+
+Notes for the fixer:
+* This is **vendored mrdoob code** — the fix diverges from upstream, so it wants a
+  comment saying why (same courtesy the `mousedown`/`contextmenu` guards got).
+* `velocity` **intentionally survives the pause** under this fix — momentum
+  carries over, which reads as correct. Do not reset it.
+* A `delta` clamp (`Math.min(delta, 0.1)`) is the alternative, but advancing
+  `prevTime` is the more faithful root-cause fix.
+
+**Regression test design.** Enable → 30 frames of W → disable → wait ≥2s →
+re-enable → 2 frames; assert horizontal displacement from the paused position is
+`< 5` units (fails at **~3900** pre-fix). Plus a **zero-velocity control case**
+(idle, no key, then lock → position unchanged) so the guard is not over-broad —
+that case is exactly what previously produced the false clean bill of health.
+**Needs a real wall-clock pause, not a seed** — it is deterministic without one.
+
+---
+
+### STILL OPEN (LOW/MEDIUM, confirmed, observed headlessly) — `triHexMeshes` unbounded growth
+
+Real and now **measured**, but still a **gameplay-design change, not a bug fix** —
+recommendation unchanged: do the `prevTime` fix first, leave this.
+
+**Root cause.** `js/7DFPS-2014.js:104` pushes every shot into `triHexMeshes` and
+never removes it; `shootTriHexMesh()` (`:241`) detaches into `scene` and never
+removes it there either (the source's own TODO at `:102` and "Remember to delete
+the object later" at `:242`). `updateTriHexPositions()` (`:202`) then walks the
+whole array every frame.
+
+**Measured cost** (SwiftShader, so absolute ms is inflated — the **scaling** is
+the signal):
+
+| triHexMeshes | scene.children | ms/frame |
+| --- | --- | --- |
+| 1 | 504 | 14.1 |
+| 501 | 1,004 | 27.4 |
+| 2,001 | 2,504 | 67.1 |
+| 5,001 | 5,504 | 139.3 |
+
+Cleanly linear at **~25µs/mesh/frame**; **frame time doubles at ~500 shots** — a
+couple of minutes of ordinary clicking. JS heap stayed **flat at 9.5MB** (geometry
+and material are shared), so this is **scene-graph CPU cost, NOT a memory leak**.
+All positions finite; pieces drift 1 unit/frame and are never culled.
+
+**Two constraints a fixer must respect:**
+1. The source's own note at `:103` — *"if I limit this array, need to put pieces
+   attached to enemies elsewhere"*. A cap needs `scene.remove()` on the recycled
+   mesh and somewhere for enemy-attached pieces to live.
+2. `updateTriHexPositions()` (`:202`) relies on **`triHexMeshes[length-1]` being
+   the held piece** (it loops `i < length - 1` to skip it). Any recycling must
+   preserve that invariant.
+
+**Regression test would assert:** after N+cap shots, `triHexMeshes.length <=
+MAX_SHOTS` and `scene.children.length` stops growing, while the held piece is
+still the last element and still rotates.
+
+---
+
+**Play coverage this run (clean / verified):**
+- **Assets:** all 6 referenced assets 200 with **exact case verified against a
+  case-sensitive disk listing** (`js/three.min.js`, `js/PointerLockControls.js`,
+  `js/7DFPS-2014.js`, `textures/b7e.jpg`, `models/platform/platform.json`,
+  `models/platform/platform.jpg`) — S3-deploy safe. macOS APFS is
+  case-insensitive so the dev server would happily serve a wrong-case path;
+  the disk listing is the real signal. `platform.json` carries no embedded
+  material/texture refs (`materials: null`) — no hidden asset loads.
+- **Boot:** zero console errors, zero page errors, zero unhandled rejections.
+  Start state `triHexMeshes = 1`, `controls.enabled = false`, pos `[0,10,0]`,
+  `scene.children = 504`.
+- **Seeded fuzz (all 5 seeds):** 200 steps each of WASD/arrows/jump/mousemove/
+  left+right-click with `controls.enabled` forced true — **no NaN/Infinity** in
+  player position, held-piece quaternion, or any triHex mesh; no softlock; no
+  console errors. `triHexMeshes` grew 37–49 per run.
+- **Resize:** 375×812 → 1280×800 → 375×812. `camera.aspect` finite throughout
+  (0.462 / 1.6), canvas tracks the viewport exactly, **no horizontal overflow**,
+  `onWindowResize` clean. No CLS surface — the renderer canvas is the only content.
+- **Spam-click:** 25 rapid clicks on the "Click to play" overlay spawned nothing
+  (`triHexMeshes` stayed 1) — the 2026-07-14 input-gating fix holds.
+- **Gate:** `npx playwright test` → **6 passed**, unchanged.
+
+**Not a defect (headless artifact):** spam-clicking raises `WrongDocumentError:
+The root document of this element is not valid for pointer lock` from
+`document.body.requestPointerLock()` (`7DFPS-2014.js:46`). That is headless
+Chromium refusing to grant lock, consistent with the standing caveat.
+
+**Known follow-ups (not this run):**
+- **`prevTime` stale-delta — HIGH, do this next.** Full root cause, repros,
+  proven one-line fix and regression-test design are in this entry above. This
+  supersedes the struck-through "self-correcting / would be tidier" bullets in
+  the 2026-07-14 and 2026-07-16 entries.
+- `triHexMeshes` unbounded growth — still open, measured in this entry above.
+  Gameplay-design change; respects-these-constraints notes included.
+- **INFERENCE ONLY — NOT a confirmed defect, do not treat it as one.**
+  `document.body.requestPointerLock()` (`7DFPS-2014.js:46`) has no `.catch()`.
+  In modern Chrome that call returns a promise that rejects on rapid re-lock
+  ("The user has exited the lock before this request was completed"), which would
+  surface as an unhandled rejection. **This run could NOT reproduce it
+  headlessly** — this Chromium build throws synchronously instead (see the
+  headless artifact above). It is **code-reading inference only**; a future run
+  would need a real browser with grantable pointer lock to confirm or drop it.
