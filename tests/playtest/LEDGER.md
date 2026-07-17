@@ -350,3 +350,138 @@ Chromium refusing to grant lock, consistent with the standing caveat.
   headlessly** — this Chromium build throws synchronously instead (see the
   headless artifact above). It is **code-reading inference only**; a future run
   would need a real browser with grantable pointer lock to confirm or drop it.
+
+---
+
+## 2026-07-17 (run 2) — FIX RUN — stale-`prevTime` pause teleport FIXED
+
+**This run's fix target** (selection: fewest regression specs of the five games —
+2 spec files vs 3-12 elsewhere). The HIGH defect filed by the recon-only entry
+above is now **fixed, tested and pushed**.
+
+**Seeds this run:** `77171042`, `77171137`, `77171271`, `77171337`, `77171618`,
+`77171808` (range 77171000-77171999; prior runs used 70000-70999, `2026071601`,
+`76063317`, 77010000-77019999).
+
+### FIXED (HIGH) — stale `prevTime` flings the player out of the world
+
+Root cause exactly as filed in the entry above; no re-derivation needed.
+
+**Fix** (`js/PointerLockControls.js:146-152`), the one-liner the prior entry
+proved, plus a comment recording why it diverges from upstream mrdoob:
+```js
+if ( scope.enabled === false ) { prevTime = performance.now(); return; }
+```
+`velocity` deliberately survives the pause — momentum carrying over reads as
+correct, and the prior entry's advice not to reset it was followed.
+
+**Independently re-measured before trusting the prior entry.** The regression
+test was written FIRST and run against unpatched source; then re-measured after.
+A second agent independently reproduced it a different way — route-intercepting
+`git show HEAD:js/PointerLockControls.js` — and got the same answer:
+
+| scenario | unpatched | patched |
+| --- | --- | --- |
+| 2.5s pause, moving player (this run's spec) | **2226-2498** units | **< 1** |
+| 2.5s pause, latched key (this run's spec) | **3149** units | **< 1** |
+| 3s pause, moving (agent, HEAD route-intercept) | **901.0** units, sign-flipped | **0.50** |
+| 3s pause, latched W (agent, HEAD route-intercept) | **4629.6** units | **1.44** |
+| idle zero-velocity control | **0** | **0** |
+
+Delta scaling on HEAD re-confirmed superlinear: 500ms pause → 29.06 u,
+5000ms → 2155.2 u (**74x** for 10x the pause).
+
+**Regression test:** `tests/playtest/regression-pause-teleport.spec.ts`, 3 tests,
+all proven FAIL pre-fix / PASS post-fix (except the control case, which passes on
+both **by design** — see below):
+1. **moving player, key released** — isolates the damping-inversion term.
+2. **key latched during the pause** — isolates the impulse term via `onKeyDown`'s
+   missing `enabled` gate (`PointerLockControls.js:46`). A genuinely distinct
+   trigger: velocity starts at zero, so the damping term contributes nothing.
+3. **idle zero-velocity control** — passes pre-fix on purpose. **This is the trap
+   that made two earlier runs file the bug as "self-correcting".** It is in the
+   suite to prove the guard is not over-broad, NOT as a bug repro.
+
+Test 1 also asserts the player actually travelled during its 30 forward frames —
+without that guard the displacement assertion would pass vacuously if movement
+broke outright.
+
+**Gate:** `npx playwright test` → **9/9 passed** (6 pre-existing + 3 new). No
+build step, no `.github/workflows`, no `lighthouserc.json`/size/html-validate in
+this repo — those gate steps are N/A here.
+
+### NEW — fog colour does not match clear colour (LOW, confirmed)
+
+`js/7DFPS-2014.js:126` sets `scene.fog = new THREE.Fog(0xffffff, 0, 750)` (white)
+while `:182` sets `renderer.setClearColor(0x7fdbff)` (light blue). **Statically
+verified**; the agent also confirmed it at runtime via a pixel histogram — sky
+pixels exactly `[127,219,255]` (110,977 samples) vs fogged-geometry pixels
+`[251,251,251]` (17,043 samples). Distant objects therefore do not fade into the
+distance; they become **hard white cutouts against a blue sky**. Trivially
+reachable — the world is unbounded, so any long run puts geometry at ~750 units.
+
+**Not fixed this run, deliberately:** the one-line fix is to make the two colours
+agree, but *which* colour is correct is an art decision (blue fog = distance haze;
+white clear = overcast sky), not a defect fix. Worth Emil's taste, not a routine's
+guess.
+
+### NEW — the world does not pause while unlocked; shot speed is per-frame (LOW, confirmed)
+
+`updateTriHexPositions()` (`js/7DFPS-2014.js:200-206`) runs unconditionally in
+`animate()`. Measured with `controls.enabled === false` (the ESC state): 3 flying
+pieces each moved exactly **-61 units over 60 rendered frames** (-1.017 u/frame)
+while "paused". Two consequences: shots keep flying while the player sits on the
+ESC overlay, and flight speed is **refresh-rate dependent** (144 Hz = 2.4x faster
+than 60 Hz). The source already knows — its own comment at `:203` says "Should
+take time delta instead of constant". Fixable together with the `triHexMeshes`
+growth item below; both are gameplay-behaviour changes, not bug fixes.
+
+### Ledger correction — `requestPointerLock()` missing `.catch()`
+
+The recon entry above recorded this as "INFERENCE ONLY — could NOT reproduce
+headlessly; this Chromium build throws synchronously instead". **Partly
+superseded:** a `window.addEventListener("unhandledrejection")` recorder DID fire
+2-7 times per seed this run, which only fires for promise rejections — so
+`document.body.requestPointerLock()` (`js/7DFPS-2014.js:46`) does return a
+promise that rejects unhandled in this build.
+
+**Read this carefully before acting on it.** The agent noted the unhandled-
+rejection count *exactly matched* the pageerror count. That coincidence is not
+explained, and a synchronous throw would surface as a pageerror, not an
+unhandledrejection — so the two channels reporting identical counts leaves open
+that one recorder is observing the other's event rather than a second, distinct
+rejection. **Verify the two channels are independent before treating the missing
+`.catch()` as confirmed.** The production-impact half (whether a *real* browser's
+rapid re-lock rejection happens in practice) remains **INFERENCE** either way.
+
+### Verified CLEAN this run
+
+- **Assets:** all 6 referenced assets 200, exact case verified via
+  `fs.realpathSync.native` against APFS canonical paths. Only `favicon.ico` 404s
+  (browser-initiated, not referenced).
+- **Boot:** start state `controls.enabled=false`, `triHexMeshes=1`, pos
+  `[0,10,0]`, `scene.children=504`. Console noise is THREE r69 PlaneGeometry info
+  + SwiftShader "GPU stall due to ReadPixels" — headless-only, not defects.
+- **6-seed x 260-step fuzz** (real CDP keyboard/mouse: WASD/arrows/Space/Shift/
+  Esc/Tab/F5/random keys, moves, clicks, drags, ESC-style pause/resume toggles):
+  **zero NaN/Infinity** across `yawObject.position/rotation`, `camera.matrixWorld`,
+  `camera.projectionMatrix`, `camera.aspect`, every `triHexMeshes[i].position/
+  quaternion`, `heldMesh`, `meshHUD` position/scale, at every 25-step snapshot.
+  No softlock (rAF advanced every interval, 991-1180 frames/run). Post-fix, max
+  per-frame motion under ESC-toggle fuzz was **0.19-1.04 u** (vs a 50-u
+  threshold). No unexpected navigations (F5 via CDP does not reload).
+- **Resize storm** (2x10 alternations 375x812 <-> 1280x800, unlocked AND playing):
+  **CLS = 0.0** (zero layout-shift entries), canvas tracks viewport exactly every
+  step, `camera.aspect` finite and correct.
+- **Overlay spam-click** (40 clicks + dblclick + drag): `triHexMeshes` stayed 1,
+  `heldMesh.quaternion.w` stayed 1, `scene.children` stayed 504, and
+  **addEventListener count stayed exactly 26 (growth 0)** — no listener leak. The
+  input-gating and contextmenu fixes hold under spam.
+- Game has no health/score variables — nothing to probe there (confirmed against
+  source).
+
+**Known follow-ups (not this run):**
+- `triHexMeshes` unbounded growth — still open, measured in the entry above.
+  Gameplay-design change; now has a natural companion (the per-frame shot speed
+  above).
+- Fog/clear colour mismatch — needs an art call from Emil, see above.

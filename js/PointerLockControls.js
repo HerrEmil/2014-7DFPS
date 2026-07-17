@@ -143,7 +143,13 @@ THREE.PointerLockControls = function ( camera ) {
 
 	this.update = function () {
 
-		if ( scope.enabled === false ) return;
+		// Diverges from upstream mrdoob: `prevTime` must keep advancing while
+		// disabled. Otherwise it freezes for the whole pause and the first frame
+		// after re-locking gets delta = the entire pause duration, which inverts
+		// the damping below (the (1 - 10*delta) factor goes negative past 0.1s)
+		// and flings the player into the fog. Velocity is deliberately NOT reset
+		// here — momentum carrying across a pause reads as correct.
+		if ( scope.enabled === false ) { prevTime = performance.now(); return; }
 
 		var time = performance.now();
 		var delta = ( time - prevTime ) / 1000;
